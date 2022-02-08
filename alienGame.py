@@ -98,7 +98,7 @@ class Entity:
         screen.blit(self.sprite, self.rect)
         # draw center
         #pygame.draw.rect(screen, (0,0,255), (self.rect.centerx, self.rect.centery, 50, 50))
-        pygame.draw.rect(screen, (0,0,255), self.rect, width = 2)
+        #pygame.draw.rect(screen, (0,0,255), self.rect, width = 2)
   
     def assign_game_instance(self, game):
         self.game = game
