@@ -1,7 +1,13 @@
+'''
+Alien Game
+Made by Justin Stitt and Amanda Acaba
+2/8/2022
+'''
 import pygame
 import sys
 import os
 import math
+from random import randrange
 
 
 class Game:
@@ -18,13 +24,21 @@ class Game:
         self.frame_rate = 30
         self.keys = self.define_keys()
         self.border_buffer = 4 # buffer around edges of screen to stop sprites melting
+        self.to_add = []
+        pygame.font.init()
+        self.font = pygame.font.SysFont('Impact', (self.width+self.height)//40)
 
     def set_player(self, player):
         self.player = player
 
     def add_object(self, obj):
-        self.entities.add(obj)
+        #self.entities.add(obj)
+        self.to_add.append(obj)
         obj.assign_game_instance(self)
+
+    def draw_text(self, message, pos=(0,0)):
+        text_surface = self.font.render(message, False, (0,0,0))
+        self.screen.blit(text_surface, pos)
 
     def define_keys(self):
         keys = dict()
@@ -51,12 +65,20 @@ class Game:
             self.entities.remove(obj)
             del obj
 
+        for obj in self.to_add:
+            self.entities.add(obj)
+        self.to_add = []
         self.clock.tick(self.frame_rate)
 
     def render(self):
         self.screen.fill(self.background_color)
         for entity in self.entities:
             entity.render(self.screen)
+
+        self.draw_text(f'score = {self.score}', 
+                            pos=(self.width//15, self.height-self.height//15))
+        self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
+                            pos=(self.width-self.width//2, self.height-self.height//15))
         pygame.display.flip()
 
     def play(self):
@@ -65,8 +87,8 @@ class Game:
 
 
 class Entity:
-    def __init__(self, pos=[0,0], velocity=[0,0], size=[50,50], 
-                        color=(255,0,255), sprite=None, scale=1., speed=0.):
+    def __init__(self, pos=[0,0], velocity=[0,0], size=[0,0], 
+                        color=(255,0,255), sprite=None, scale=0., speed=0.):
         self.pos = pos 
         self.velocity = velocity 
         self.size = size 
@@ -210,10 +232,35 @@ class Laser(Entity):
             if isinstance(cobj, Alien):
                 cobj.beat()
 
+class Spawner(Entity):
+    def __init__(self, to_spawn = None, spawn_timer=50, do_spawn=True, game=None, **kwargs):
+        super().__init__()
+        self.spawn_timer = spawn_timer
+        self.do_spawn = do_spawn
+        self.ctime = spawn_timer
+        self.game = game
+        self.to_spawn = to_spawn
+        self.kwargs = kwargs
+
+    def update(self):
+        if self.game is None: return
+        self.ctime -= 1
+        if self.ctime <= 0:
+            self.spawn()
+
+    def spawn(self):
+        randx = randrange(self.game.width//5, self.game.width-self.game.width//5)
+        randy = randrange(self.game.height//15, self.game.height//2)
+        new = self.to_spawn(pos=[randx,randy], **self.kwargs)
+        self.game.add_object(new)
+        self.ctime = self.spawn_timer
+        
+
 class Alien(Entity):
     def __init__(self, pos=[0,0], scale=0.1, sprite='alien'):
         super().__init__(pos=pos, scale=scale, sprite=sprite)
-    
+        print(f'alien: {scale=}, {pos=}, {sprite=}')
+
     def beat(self):
         self.game.score += 1
         self.cleanup = True
@@ -222,10 +269,11 @@ class Alien(Entity):
 def main():
     g = Game()
     s = Ship(pos=[100,100], sprite='ship',scale=.15)
+    spawner = Spawner(to_spawn=Alien)
     g.add_object(s)    
     g.set_player(s)
-
-    g.add_object(Alien([50,50]))
+    g.add_object(spawner)
+    #g.add_object(Alien([50,50]))
 
     while True:
         g.play()
