@@ -77,8 +77,8 @@ class Game:
 
         self.draw_text(f'score = {self.score}', 
                             pos=(self.width//15, self.height-self.height//15))
-        self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
-                            pos=(self.width-self.width//2, self.height-self.height//15))
+        #self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
+                            #pos=(self.width-self.width//2, self.height-self.height//15))
         pygame.display.flip()
 
     def play(self):
