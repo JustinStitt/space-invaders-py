@@ -27,9 +27,14 @@ class Game:
         self.to_add = []
         pygame.font.init()
         self.font = pygame.font.SysFont('Impact', (self.width+self.height)//40)
+        self.background_img = pygame.image.load('./assets/background.jpg')
+        self.background_img = pygame.transform.scale(self.background_img, (self.width, self.height))
 
     def set_player(self, player):
         self.player = player
+    
+    def damage_player(self, amount=1):
+        print(f'dealing {amount} damage to player')
 
     def add_object(self, obj):
         #self.entities.add(obj)
@@ -37,7 +42,7 @@ class Game:
         obj.assign_game_instance(self)
 
     def draw_text(self, message, pos=(0,0)):
-        text_surface = self.font.render(message, False, (0,0,0))
+        text_surface = self.font.render(message, False, (244,199,244))
         self.screen.blit(text_surface, pos)
 
     def define_keys(self):
@@ -71,20 +76,21 @@ class Game:
         self.clock.tick(self.frame_rate)
 
     def render(self):
-        self.screen.fill(self.background_color)
+        #self.screen.fill(self.background_color)
+        self.screen.blit(self.background_img, (0,0))
         for entity in self.entities:
             entity.render(self.screen)
 
         self.draw_text(f'score = {self.score}', 
-                            pos=(self.width//15, self.height-self.height//15))
+                            pos=(self.width//25, self.height-self.height//15))
         #self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
-                            #pos=(self.width-self.width//2, self.height-self.height//15))
+        #                    pos=(self.width-self.width//2, self.height-self.height//15))
+        #print(f'{self.entities=}')
         pygame.display.flip()
 
     def play(self):
         self.update()
         self.render()
-
 
 class Entity:
     def __init__(self, pos=[0,0], velocity=[0,0], size=[0,0], 
@@ -150,15 +156,19 @@ class Entity:
         return collisions
 
 class Player:
+    def __init__(self):
+        self.lives = 3
+
     def parse_keyboard_input(self, keys):
         velo = [0, 0]
         for k, v in self.game.keys.items():
             go = False
             for key in v:
-                if keys[key] != False: go = True
+                if keys[key] != False:
+                    go = True
             if not go: continue
             
-            if k == 'up':
+            if k == 'up' and not self.stuck_to_bottom:
                 velo[1] = -self.speed
             elif k == 'down':
                 velo[1] = self.speed
@@ -168,12 +178,14 @@ class Player:
                 velo[0] = -self.speed
             elif k == 'shoot':
                 self.shoot()
-            
+
         self.velocity = velo
 
 class Ship(Entity, Player):
-    def __init__(self, pos=[0,0], sprite=None, scale=.2, speed=6.):
+    def __init__(self, pos=[0,1000], sprite=None, scale=.2, speed=8.):
         super().__init__(pos=pos, sprite=sprite, scale=scale, speed=speed)
+        Player.__init__(self)
+        self.stuck_to_bottom = True # can't move from the bottom
     
     def keep_in_bounds(self):
         x, y, w, h = (self.rect.centerx, self.rect.centery, *self.rect[2:])
@@ -199,16 +211,14 @@ class Ship(Entity, Player):
         npos = [self.rect.centerx, self.rect.centery - self.rect[3]/3]
         laser.update_pos(npos)
 
-
-
 class Laser(Entity):
-    def __init__(self, pos=[0,0], speed=1.5, velocity=[0,-1], size=[30,40], scale=.05, ratio=.15, acceleration=.2):
+    def __init__(self, pos=[0,0], speed=1.5, velocity=[0,-1], size=[30,40], scale=.05, ratio=.15, acceleration=.15):
         super().__init__(pos=pos, speed=speed, velocity=velocity[:], size=size, scale=scale)
         self.acceleration = acceleration
         self.velocity[0] *= speed
         self.velocity[1] *= speed
         self.ratio = ratio
-        self.alive = 50
+        self.alive = 75
 
     def update(self):
         super().update()
@@ -249,31 +259,109 @@ class Spawner(Entity):
             self.spawn()
 
     def spawn(self):
-        randx = randrange(self.game.width//5, self.game.width-self.game.width//5)
-        randy = randrange(self.game.height//15, self.game.height//2)
-        new = self.to_spawn(pos=[randx,randy], **self.kwargs)
+        #randx = randrange(self.game.width//5, self.game.width-self.game.width//5)
+        #randy = randrange(self.game.height//15, self.game.height//2)
+        new = self.to_spawn(**self.kwargs)
         self.game.add_object(new)
+        if isinstance(new, AlienFleet):
+            new.spawn_fleet()
         self.ctime = self.spawn_timer
-        
-
+   
 class Alien(Entity):
-    def __init__(self, pos=[0,0], scale=0.1, sprite='alien'):
-        super().__init__(pos=pos, scale=scale, sprite=sprite)
-        print(f'alien: {scale=}, {pos=}, {sprite=}')
+    def __init__(self, pos=[0,0], scale=0.1, sprite='alien', velocity=[0., 0.], fleet=[], is_laser=False):
+        super().__init__(pos=pos, scale=scale, sprite=sprite, velocity=velocity)
+        self.fleet = fleet
+        self.can_damage = True
+        self.is_laser = is_laser
 
     def beat(self):
         self.game.score += 1
         self.cleanup = True
-        print(f'{self.game.score=}') # need python 3.9+ for {var=} syntax
+        if self in self.fleet:
+            self.fleet.remove(self)
+
+    def update(self, able=False):
+        if not able: return
+        super().update()
+        self.check_damage()
+
+    def bounce(self):
+        self.velocity[0] *= -1;
+
+    def collides_with_player(self):
+        player = self.game.player
+        if player is None: return
+        collides = self.collides()
+        if player in collides:
+            self.game.damage_player()
+            self.can_damage = False
+            self.cleanup = True
+            return True
+        return False
+
+    def check_damage(self):
+        if not self.can_damage: return
+        if self.collides_with_player(): return
+        if self.rect[1] + self.rect.height >= self.game.height:
+            for _alien in self.fleet:
+                _alien.cleanup = True
+                _alien.can_damage = False
+            self.game.damage_player(1)
+
+class AlienFleet(Entity):
+    def __init__(self, pos=[0,0], velocity=[-7.,0.], n=5, laser_chance=.15):
+        super().__init__(pos=pos[:], velocity=velocity[:])
+        self.n = n
+        self.fleet = []
+        self.laser_chance = laser_chance * 100.
+    
+    def spawn_fleet(self, velocity=[-10., 0.], pos=[0.,0.]):
+        for x in range(self.n):
+            new_alien = Alien(velocity=velocity[:])
+            new_alien.scale = new_alien.scale / self.n * 7
+            r = randrange(100)
+            if r < self.laser_chance:
+                new_alien.sprite = "zombie-alien"
+                new_alien.is_laser = True
+            self.game.add_object(new_alien)
+            p = new_alien.pos
+            new_alien.rect.center = [new_alien.rect.width * x + new_alien.rect.width, p[1] + new_alien.rect.height + 5]
+            self.fleet.append(new_alien)
+            new_alien.fleet = self.fleet
+
+    def update(self):
+        super().update()
+        for _alien in self.fleet: _alien.update(able=True)        
+        self.check_empty_fleet()
+        self.check_bounce()
+
+    def check_empty_fleet(self):
+        if len(self.fleet) == 0:
+            self.cleanup = True
+
+    def bounce(self):
+        for _alien in self.fleet:
+            _alien.bounce()
+        self.down()
+    
+    def down(self, levels=1):
+        for _alien in self.fleet:
+            _alien.rect[1] += _alien.rect.height//2
+
+    def check_bounce(self):
+        if self.cleanup == True: return
+        lm, rm = (self.fleet[0], self.fleet[-1])
+        if lm.rect[0] < 0: self.bounce()
+        elif rm.rect[0] + rm.rect.width > self.game.width - 1: self.bounce()
+
 
 def main():
     g = Game()
-    s = Ship(pos=[100,100], sprite='ship',scale=.15)
-    spawner = Spawner(to_spawn=Alien)
+    s = Ship(sprite='ship',scale=.1)
     g.add_object(s)    
     g.set_player(s)
+    spawner = Spawner(to_spawn=AlienFleet, velocity=[-2.0,0.], n = 10)
     g.add_object(spawner)
-    #g.add_object(Alien([50,50]))
 
     while True:
         g.play()
