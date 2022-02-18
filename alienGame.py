@@ -26,23 +26,32 @@ class Game:
         self.border_buffer = 4 # buffer around edges of screen to stop sprites melting
         self.to_add = []
         pygame.font.init()
-        self.font = pygame.font.SysFont('Impact', (self.width+self.height)//40)
+        self.font = pygame.font.SysFont('Impact', (self.width+self.height)//90)
         self.background_img = pygame.image.load('./assets/background.jpg')
         self.background_img = pygame.transform.scale(self.background_img, (self.width, self.height))
+        self.running = True
 
     def set_player(self, player):
         self.player = player
     
     def damage_player(self, amount=1):
         print(f'dealing {amount} damage to player')
+        self.player.lives -= amount
+        if(self.player.lives <= 0):
+            lose_font = pygame.font.SysFont('Impact', (self.width+self.height)//10)
+            self.draw_text(f'YOU LOST!', 
+                            pos=(self.width//7, self.height//4), font = lose_font)
+            pygame.display.flip()
+            self.running = False
 
     def add_object(self, obj):
         #self.entities.add(obj)
         self.to_add.append(obj)
         obj.assign_game_instance(self)
 
-    def draw_text(self, message, pos=(0,0)):
-        text_surface = self.font.render(message, False, (244,199,244))
+    def draw_text(self, message, pos=(0,0), font=None):
+        if font is None: font = self.font
+        text_surface = font.render(message, False, (244,199,244))
         self.screen.blit(text_surface, pos)
 
     def define_keys(self):
@@ -82,19 +91,22 @@ class Game:
             entity.render(self.screen)
 
         self.draw_text(f'score = {self.score}', 
-                            pos=(self.width//25, self.height-self.height//15))
-        #self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
-        #                    pos=(self.width-self.width//2, self.height-self.height//15))
+                            pos=(self.width//30, self.height-self.height//10))
+        self.draw_text(f'lives = {self.player.lives}', 
+                pos=(self.width//30, self.height-self.height//16))
+        self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
+                            pos=(self.width-self.width//4, self.height-self.height//15))
         #print(f'{self.entities=}')
         pygame.display.flip()
 
     def play(self):
         self.update()
+        if not self.running: return
         self.render()
 
 class Entity:
     def __init__(self, pos=[0,0], velocity=[0,0], size=[0,0], 
-                        color=(255,0,255), sprite=None, scale=0., speed=0.):
+                        color=(255,0,255), sprite=None, scale=0., speed=0., shoot_cd=5):
         self.pos = pos 
         self.velocity = velocity 
         self.size = size 
@@ -105,6 +117,8 @@ class Entity:
         self.speed = speed
         self.rect = None
         self.cleanup = False
+        self.shoot_cd = shoot_cd
+        self.current_cd = self.shoot_cd
 
     def move(self):
         if self.velocity == [0, 0]: return
@@ -112,8 +126,10 @@ class Entity:
         self.rect.centery += self.velocity[1]
 
     def update(self):
-        self.move()
         self.collision_logic()
+        self.move()
+        if self.current_cd > 0:
+            self.current_cd -= 1
     
     def update_pos(self, npos):
         self.rect.centerx = npos[0]
@@ -139,6 +155,17 @@ class Entity:
         sp = pygame.image.load(f'assets/{sprite}.{ext}')
         sp = pygame.transform.scale(sp, (self.game.width*self.scale, self.game.height*self.scale))
         return sp
+    
+    def shoot(self, dir=-1, acceleration=.15, speed=1):
+        if self.current_cd > 0: return
+        self.current_cd = self.shoot_cd
+        laser = Laser(velocity=[0,dir], acceleration=acceleration, speed=speed)
+        if self is self.game.player:
+            laser.is_player_owned = True
+            laser.color = (0,255,5)
+        self.game.add_object(laser)
+        npos = [self.rect.centerx, self.rect.centery - self.rect[3]/3]
+        laser.update_pos(npos)
 
     def collision_logic(self):
         pass
@@ -182,7 +209,7 @@ class Player:
         self.velocity = velo
 
 class Ship(Entity, Player):
-    def __init__(self, pos=[0,1000], sprite=None, scale=.2, speed=8.):
+    def __init__(self, pos=[200,1000], sprite=None, scale=.2, speed=8.):
         super().__init__(pos=pos, sprite=sprite, scale=scale, speed=speed)
         Player.__init__(self)
         self.stuck_to_bottom = True # can't move from the bottom
@@ -205,42 +232,49 @@ class Ship(Entity, Player):
         super().update()
         self.keep_in_bounds()
 
-    def shoot(self):
-        laser = Laser()
-        self.game.add_object(laser)
-        npos = [self.rect.centerx, self.rect.centery - self.rect[3]/3]
-        laser.update_pos(npos)
-
 class Laser(Entity):
-    def __init__(self, pos=[0,0], speed=1.5, velocity=[0,-1], size=[30,40], scale=.05, ratio=.15, acceleration=.15):
+    def __init__(self, pos=[0,0], speed=1.5, velocity=[0,1], size=[30,40], scale=.05, ratio=.15, 
+                                                        acceleration=.3, dir=1, is_player_owned=False, color=(255,0,0)):
         super().__init__(pos=pos, speed=speed, velocity=velocity[:], size=size, scale=scale)
         self.acceleration = acceleration
         self.velocity[0] *= speed
         self.velocity[1] *= speed
         self.ratio = ratio
-        self.alive = 75
+        self.is_player_owned = is_player_owned
+        self.color = color
+        self.can_damage = True
 
     def update(self):
         super().update()
         self.velocity[0] *= 1.+self.acceleration
         self.velocity[1] *= 1.+self.acceleration
-        self.alive -= 1
-        if self.alive < 0: self.cleanup = True
+        self.check_remove()
 
     def load_sprite(self, sprite):
         sp = super().load_sprite(sprite=sprite)
         sp_rect = sp.get_rect()
         sp = pygame.transform.scale(sp, (sp_rect[2]*self.ratio, sp_rect[3]*1.)) 
+        sp.fill((*self.color, 100), special_flags=pygame.BLEND_ADD)
         return sp
+
+    def check_remove(self):
+        if self.rect[1] < 0: self.cleanup = True
+        elif self.rect[1] + self.rect.height > self.game.height: self.cleanup = True
 
     def collision_logic(self):
         collisions = self.collides()
+        if not self.can_damage: return
         for cobj in collisions:
             if isinstance(cobj, Entity):
                 pass
                 #print(f'{type(self)} hit {type(cobj)}')
-            if isinstance(cobj, Alien):
+            if isinstance(cobj, Alien) and self.is_player_owned == True:
                 cobj.beat()
+            elif self.is_player_owned == False and isinstance(cobj, Player):
+                self.game.damage_player(1)
+                self.can_damage = False
+                self.cleanup = True
+                return
 
 class Spawner(Entity):
     def __init__(self, to_spawn = None, spawn_timer=50, do_spawn=True, game=None, **kwargs):
@@ -268,11 +302,12 @@ class Spawner(Entity):
         self.ctime = self.spawn_timer
    
 class Alien(Entity):
-    def __init__(self, pos=[0,0], scale=0.1, sprite='alien', velocity=[0., 0.], fleet=[], is_laser=False):
+    def __init__(self, pos=[0,0], scale=0.1, sprite='alien', velocity=[0., 0.], fleet=[], is_laser=False, shoot_cd=300):
         super().__init__(pos=pos, scale=scale, sprite=sprite, velocity=velocity)
         self.fleet = fleet
         self.can_damage = True
         self.is_laser = is_laser
+        self.shoot_cd = shoot_cd
 
     def beat(self):
         self.game.score += 1
@@ -284,6 +319,8 @@ class Alien(Entity):
         if not able: return
         super().update()
         self.check_damage()
+        if self.is_laser:
+            self.shoot(dir=1, acceleration = 0., speed=10)
 
     def bounce(self):
         self.velocity[0] *= -1;
@@ -309,16 +346,18 @@ class Alien(Entity):
             self.game.damage_player(1)
 
 class AlienFleet(Entity):
-    def __init__(self, pos=[0,0], velocity=[-7.,0.], n=5, laser_chance=.15):
+    def __init__(self, pos=[0,0], velocity=[-7.,0.], n=5, laser_chance=.15, variance=0):
         super().__init__(pos=pos[:], velocity=velocity[:])
         self.n = n
         self.fleet = []
         self.laser_chance = laser_chance * 100.
+        self.variance = variance
     
     def spawn_fleet(self, velocity=[-10., 0.], pos=[0.,0.]):
-        for x in range(self.n):
+        v = 0 if self.variance <= 0 else randrange(self.variance)
+        for x in range(self.n+v):
             new_alien = Alien(velocity=velocity[:])
-            new_alien.scale = new_alien.scale / self.n * 7
+            new_alien.scale = (new_alien.scale / (self.n+v)) * 7
             r = randrange(100)
             if r < self.laser_chance:
                 new_alien.sprite = "zombie-alien"
@@ -360,7 +399,7 @@ def main():
     s = Ship(sprite='ship',scale=.1)
     g.add_object(s)    
     g.set_player(s)
-    spawner = Spawner(to_spawn=AlienFleet, velocity=[-2.0,0.], n = 10)
+    spawner = Spawner(to_spawn=AlienFleet, velocity=[-2.0,0.], n = 10, variance=0)
     g.add_object(spawner)
 
     while True:
