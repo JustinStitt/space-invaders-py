@@ -3,6 +3,7 @@ Alien Game
 Made by Justin Stitt and Amanda Acaba
 2/8/2022
 '''
+from landingPage import LandingPage
 import pygame
 import sys
 import os
@@ -30,6 +31,8 @@ class Game:
         self.background_img = pygame.image.load('./assets/background.jpg')
         self.background_img = pygame.transform.scale(self.background_img, (self.width, self.height))
         self.running = True
+        self.landing_page = None
+        self.on_landing = True
 
     def set_player(self, player):
         self.player = player
@@ -38,9 +41,8 @@ class Game:
         print(f'dealing {amount} damage to player')
         self.player.lives -= amount
         if(self.player.lives <= 0):
-            lose_font = pygame.font.SysFont('Impact', (self.width+self.height)//10)
             self.draw_text(f'YOU LOST!', 
-                            pos=(self.width//7, self.height//4), font = lose_font)
+                            pos=(self.width//7, self.height//4), font_size=(self.width+self.height)//10)
             pygame.display.flip()
             self.running = False
 
@@ -49,9 +51,9 @@ class Game:
         self.to_add.append(obj)
         obj.assign_game_instance(self)
 
-    def draw_text(self, message, pos=(0,0), font=None):
-        if font is None: font = self.font
-        text_surface = font.render(message, False, (244,199,244))
+    def draw_text(self, message, pos=(0,0), color=(244,199,244), font_size=40):
+        font = pygame.font.SysFont('Impact', font_size)
+        text_surface = font.render(message, False, color)
         self.screen.blit(text_surface, pos)
 
     def define_keys(self):
@@ -70,6 +72,10 @@ class Game:
                 pygame.quit()
             if event.type == pygame.KEYDOWN or event.type == pygame.KEYUP:
                 self.player.parse_keyboard_input(pygame.key.get_pressed())
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if not self.on_landing: continue
+                self.landing_page.parse_mouse_down(event.pos)
+        if self.on_landing: return
         to_clean = []
         for entity in self.entities:
             if entity.cleanup: to_clean.append(entity)
@@ -83,13 +89,15 @@ class Game:
             self.entities.add(obj)
         self.to_add = []
         self.clock.tick(self.frame_rate)
+    
+    def assign_landing_page(self, lp):
+        self.landing_page = lp
 
     def render(self):
         #self.screen.fill(self.background_color)
         self.screen.blit(self.background_img, (0,0))
         for entity in self.entities:
             entity.render(self.screen)
-
         self.draw_text(f'score = {self.score}', 
                             pos=(self.width//30, self.height-self.height//10))
         self.draw_text(f'lives = {self.player.lives}', 
@@ -100,6 +108,12 @@ class Game:
         pygame.display.flip()
 
     def play(self):
+        if self.on_landing:
+            self.update()
+            self.landing_page.update()
+            self.landing_page.render()
+            pygame.display.flip()
+            return
         self.update()
         if not self.running: return
         self.render()
@@ -302,15 +316,17 @@ class Spawner(Entity):
         self.ctime = self.spawn_timer
    
 class Alien(Entity):
-    def __init__(self, pos=[0,0], scale=0.1, sprite='alien', velocity=[0., 0.], fleet=[], is_laser=False, shoot_cd=300):
+    def __init__(self, pos=[0,0], scale=0.1, sprite='alien', velocity=[0., 0.], \
+                    fleet=[], is_laser=False, shoot_cd=300, value=100):
         super().__init__(pos=pos, scale=scale, sprite=sprite, velocity=velocity)
         self.fleet = fleet
         self.can_damage = True
         self.is_laser = is_laser
         self.shoot_cd = shoot_cd
+        self.value = value
 
     def beat(self):
-        self.game.score += 1
+        self.game.score += self.value
         self.cleanup = True
         if self in self.fleet:
             self.fleet.remove(self)
@@ -362,6 +378,10 @@ class AlienFleet(Entity):
             if r < self.laser_chance:
                 new_alien.sprite = "zombie-alien"
                 new_alien.is_laser = True
+                new_alien.value = 300
+            elif r < self.laser_chance*2:
+                new_alien.sprite = 'alien2'
+                new_alien.value = 200
             self.game.add_object(new_alien)
             p = new_alien.pos
             new_alien.rect.center = [new_alien.rect.width * x + new_alien.rect.width, p[1] + new_alien.rect.height + 5]
@@ -396,6 +416,8 @@ class AlienFleet(Entity):
 
 def main():
     g = Game()
+    ls = LandingPage(game=g)
+    g.assign_landing_page(ls)
     s = Ship(sprite='ship',scale=.1)
     g.add_object(s)    
     g.set_player(s)
