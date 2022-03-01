@@ -4,6 +4,7 @@ Made by Justin Stitt and Amanda Acaba
 2/8/2022
 '''
 from landingPage import LandingPage
+from explosion import Explosion
 import pygame
 import sys
 import os
@@ -33,6 +34,9 @@ class Game:
         self.running = True
         self.landing_page = None
         self.on_landing = True
+        self.laser_sound = pygame.mixer.Sound('assets/lasersound.mp3')
+        self.explosion_sound = pygame.mixer.Sound('assets/explosionsound.wav')
+        self.highscore_file = open('./assets/highscores.txt', 'a+')
 
     def set_player(self, player):
         self.player = player
@@ -43,6 +47,9 @@ class Game:
         if(self.player.lives <= 0):
             self.draw_text(f'YOU LOST!', 
                             pos=(self.width//7, self.height//4), font_size=(self.width+self.height)//10)
+            if not self.highscore_file.closed:
+                self.highscore_file.write(f'{self.score}\n')
+                self.highscore_file.close()
             pygame.display.flip()
             self.running = False
 
@@ -98,12 +105,11 @@ class Game:
         self.screen.blit(self.background_img, (0,0))
         for entity in self.entities:
             entity.render(self.screen)
+            if isinstance(entity, Explosion): print(entity)
         self.draw_text(f'score = {self.score}', 
                             pos=(self.width//30, self.height-self.height//10))
         self.draw_text(f'lives = {self.player.lives}', 
                 pos=(self.width//30, self.height-self.height//16))
-        self.draw_text(f'(debug)\nTotal Objects: {len(self.entities)}', 
-                            pos=(self.width-self.width//4, self.height-self.height//15))
         #print(f'{self.entities=}')
         pygame.display.flip()
 
@@ -180,6 +186,7 @@ class Entity:
         self.game.add_object(laser)
         npos = [self.rect.centerx, self.rect.centery - self.rect[3]/3]
         laser.update_pos(npos)
+        self.game.laser_sound.play()
 
     def collision_logic(self):
         pass
@@ -192,6 +199,7 @@ class Entity:
         collisions = []
         for obj in g.entities:
             if obj is self: continue
+            if isinstance(obj, Explosion): continue
             collide = self.rect.colliderect(obj.rect)
             if collide: collisions.append(obj)
         return collisions
@@ -284,6 +292,7 @@ class Laser(Entity):
                 #print(f'{type(self)} hit {type(cobj)}')
             if isinstance(cobj, Alien) and self.is_player_owned == True:
                 cobj.beat()
+
             elif self.is_player_owned == False and isinstance(cobj, Player):
                 self.game.damage_player(1)
                 self.can_damage = False
@@ -324,19 +333,37 @@ class Alien(Entity):
         self.is_laser = is_laser
         self.shoot_cd = shoot_cd
         self.value = value
+        self.explosion = Explosion(game=self.game, pos=[self.pos[0],self.pos[1]], alien=self)
+        self.is_exploding = False
+        self.pos_time_of_death = [0 ,0]
 
     def beat(self):
+        self.is_exploding = True
+        self.pos_time_of_death = [self.rect[0], self.rect[1]]
         self.game.score += self.value
-        self.cleanup = True
-        if self in self.fleet:
-            self.fleet.remove(self)
-
+        self.game.explosion_sound.play()
+        
     def update(self, able=False):
         if not able: return
         super().update()
         self.check_damage()
         if self.is_laser:
             self.shoot(dir=1, acceleration = 0., speed=10)
+        if self.is_exploding:
+            self.explosion.game=self.game
+            self.explosion.update()
+        if self.cleanup:
+            del self.explosion
+            self.is_exploding = False
+            if self in self.fleet:
+                self.fleet.remove(self)
+    
+    def render(self, screen):
+        super().render(screen)
+        if self.is_exploding:
+            self.explosion.game = self.game
+            self.explosion.pos=[self.pos_time_of_death[0], self.pos_time_of_death[1]]
+            self.explosion.render()
 
     def bounce(self):
         self.velocity[0] *= -1;

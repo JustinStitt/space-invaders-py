@@ -25,15 +25,34 @@ class LandingPage:
         self.buttons = []
         self.setup_buttons()
         self.alien_images = self.load_alien_images()
+        self.do_show_highscores = False
 
     def start_game(self):
         print('Starting Game!', flush=True)
         self.game.on_landing = False
 
+    def toggle_do_show_highscores(self):
+        self.do_show_highscores = not self.do_show_highscores
+
+    def show_highscores(self):
+        if not self.do_show_highscores: return
+        self.game.highscore_file.seek(0)
+        scores = self.game.highscore_file.readlines()
+        x = 0
+        start = 50
+        spacing = 100
+        scores = sorted(scores, key=lambda x : int(x), reverse=True)[:5] # show top 5 highscores
+        for line in scores:
+            self.game.draw_text(f'{x+1}. {line.rstrip()}', (start + x * spacing, 750), color=(242,199,244), font_size=20)
+            x += 1
+
     def setup_buttons(self):
         start_game = Button(self.game, pos=(275,600), text='Start Game',
                                         color=(14,199,16), action=self.start_game)
+        highscores = Button(self.game, pos=(275, 700), text='Highscores', color = (199, 14, 14), action=self.toggle_do_show_highscores)
         self.buttons.append(start_game)
+        self.buttons.append(highscores)
+
 
     def render(self):
         if not self.game.on_landing: return
@@ -42,6 +61,7 @@ class LandingPage:
         for button in self.buttons:
             button.render()
         self.draw_alien_images()
+        self.show_highscores()
 
     def buttons_clicked(self, mpos, lim=1):
         clicked = [] # list of buttons clicked (usually just one, det by lim)
