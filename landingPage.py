@@ -8,13 +8,15 @@ class Button:
         self.pos = pos
         self.text = text
         self.color = color
+        self.hovered_color = (42, 17, 231)
         self.action = action
         self.game = game
         self.width = width
         self.height = height
+        self.hovered = False
     
     def render(self):
-        pygame.draw.rect(self.game.screen, self.color, (*self.pos, self.width, self.height))
+        pygame.draw.rect(self.game.screen, self.color if not self.hovered else self.hovered_color, (*self.pos, self.width, self.height))
         # draw text inside button
         self.game.draw_text(self.text, self.pos, color=(0,0,0), font_size=20)
 
@@ -77,6 +79,16 @@ class LandingPage:
     def parse_mouse_down(self, mpos):
         for button in self.buttons_clicked(mpos):
             button.action()
+    
+    def parse_mouse_movement(self, mpos):
+        (mx, my) = mpos
+        for button in self.buttons:
+            (bx, by) = button.pos
+            (bw, bh) = (button.width, button.height)
+            if mx < bx or mx > bx + bw: button.hovered = False; continue
+            if my < by or my > by + bh: button.hovered = False; continue
+            button.hovered = True
+        
     
     def draw_alien_images(self):
         spacing = (self.game.height/len(self.alien_images)) // 4

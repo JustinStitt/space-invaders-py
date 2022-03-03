@@ -24,6 +24,7 @@ class Game:
         self.entities = set()
         self.clock = pygame.time.Clock()
         self.frame_rate = 30
+        self.frame = 0
         self.keys = self.define_keys()
         self.border_buffer = 4 # buffer around edges of screen to stop sprites melting
         self.to_add = []
@@ -73,6 +74,7 @@ class Game:
         return keys
 
     def update(self):
+        self.frame += 1
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
@@ -82,6 +84,10 @@ class Game:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if not self.on_landing: continue
                 self.landing_page.parse_mouse_down(event.pos)
+            if event.type == pygame.MOUSEMOTION:
+                if not self.on_landing: continue
+                self.landing_page.parse_mouse_movement(event.pos)
+
         if self.on_landing: return
         to_clean = []
         for entity in self.entities:
@@ -336,6 +342,9 @@ class Alien(Entity):
         self.explosion = Explosion(game=self.game, pos=[self.pos[0],self.pos[1]], alien=self)
         self.is_exploding = False
         self.pos_time_of_death = [0 ,0]
+        self.do_anim = True
+        self.anim_state = 0
+        self.anim_timer = randrange(10, 100)
 
     def beat(self):
         self.is_exploding = True
@@ -353,10 +362,14 @@ class Alien(Entity):
             self.explosion.game=self.game
             self.explosion.update()
         if self.cleanup:
-            del self.explosion
             self.is_exploding = False
+            #del self.explosion
             if self in self.fleet:
                 self.fleet.remove(self)
+        if self.game.frame % self.anim_timer == 0 and self.do_anim:
+            self.sprite = self.load_sprite('alien' if self.anim_state == 0 else 'alien2')
+            self.anim_state += 1
+            self.anim_state %= 2
     
     def render(self, screen):
         super().render(screen)
@@ -406,6 +419,7 @@ class AlienFleet(Entity):
                 new_alien.sprite = "zombie-alien"
                 new_alien.is_laser = True
                 new_alien.value = 300
+                new_alien.do_anim = False
             elif r < self.laser_chance*2:
                 new_alien.sprite = 'alien2'
                 new_alien.value = 200

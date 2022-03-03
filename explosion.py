@@ -26,6 +26,7 @@ class Explosion:
     def render(self):
         sprite = self.sprites[self.state]
         self.game.screen.blit(sprite, (*self.pos, 25, 25))
+        self.game.draw_text(f'{self.alien.value}', (self.alien.pos_time_of_death), color=(226,211,255), font_size=20)
     
     def update(self):
         if self.frame % self.speed == 0:
