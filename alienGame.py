@@ -42,7 +42,6 @@ class Game:
         self.player = player
     
     def damage_player(self, amount=1):
-        print(f'dealing {amount} damage to player')
         self.player.lives -= amount
         if(self.player.lives <= 0):
             self.draw_text(f'YOU LOST!', 
@@ -292,13 +291,14 @@ class Laser(Entity):
                 #print(f'{type(self)} hit {type(cobj)}')
             if isinstance(cobj, Alien) and self.is_player_owned == True:
                 cobj.beat()
-
             elif self.is_player_owned == False and isinstance(cobj, Player):
                 self.game.damage_player(1)
                 self.can_damage = False
                 self.cleanup = True
                 return
-
+            if isinstance(cobj, BarrierPiece):
+                cobj.beat()
+                self.cleanup = True
 class Spawner(Entity):
     def __init__(self, to_spawn = None, spawn_timer=50, do_spawn=True, game=None, **kwargs):
         super().__init__()
@@ -333,6 +333,10 @@ class Alien(Entity):
         self.is_laser = is_laser
         self.shoot_cd = shoot_cd
         self.value = value
+        self.anim_timer = randrange(10, 125)
+        self.do_anim = True
+        self.anim_state = 0
+        self.frame = 0
         self.explosion = Explosion(game=self.game, pos=[self.pos[0],self.pos[1]], alien=self)
         self.is_exploding = False
         self.pos_time_of_death = [0 ,0]
@@ -353,11 +357,18 @@ class Alien(Entity):
             self.explosion.game=self.game
             self.explosion.update()
         if self.cleanup:
-            del self.explosion
+            #del self.explosion # figure out explosion object cleanup...
             self.is_exploding = False
             if self in self.fleet:
                 self.fleet.remove(self)
+        self.frame += 1
+        if self.frame % self.anim_timer == 0 and self.do_anim:
+            self.animate()
     
+    def animate(self):
+        self.anim_state = (self.anim_state + 1) % 2
+        self.sprite = self.load_sprite('alien' if self.anim_state == 0 else 'alien2')
+
     def render(self, screen):
         super().render(screen)
         if self.is_exploding:
@@ -406,6 +417,7 @@ class AlienFleet(Entity):
                 new_alien.sprite = "zombie-alien"
                 new_alien.is_laser = True
                 new_alien.value = 300
+                new_alien.do_anim = False
             elif r < self.laser_chance*2:
                 new_alien.sprite = 'alien2'
                 new_alien.value = 200
@@ -441,6 +453,52 @@ class AlienFleet(Entity):
         elif rm.rect[0] + rm.rect.width > self.game.width - 1: self.bounce()
 
 
+class Barrier(Entity):
+    '''
+    Barriers can be hit by lasers and their model deteriorates
+    '''
+    def __init__(self, game=None, pos=[100, 550]):
+        super().__init__(pos=pos[:])
+        self.pieces = []
+        self.game = game
+        self.make_conglomerate(200, 100, 8)
+
+    def render(self, screen):
+        super().render(screen)
+        for piece in self.pieces:
+            piece.render(screen)
+    
+    def make_conglomerate(self, width, height, cell_size):
+        r = width // cell_size
+        c = height // cell_size
+        (x, y) = (self.pos[0], self.pos[1])
+        for i in range(r):
+            for j in range(c):
+                new_piece = (BarrierPiece(color=self.color, cell_size=cell_size,
+                                                scale=.5, game=self.game,
+                                                  pos=[x+i*cell_size, y+j*cell_size], barrier=self))
+                self.game.add_object(new_piece)
+                self.pieces.append(new_piece)
+                
+class BarrierPiece(Entity):
+    def __init__(self, cell_size, scale, game, color, pos, barrier=None):
+        super().__init__(scale=scale, pos=pos[:])
+        self.game = game
+        self.color = (randrange(1,255), randrange(1,255), 40)
+        self.cell_size = cell_size
+        self.rect = None
+        self.barrier = barrier
+    
+    def beat(self):
+        if self in self.barrier.pieces:
+            self.barrier.pieces.remove(self)
+        self.cleanup = True
+
+    def render(self, screen):
+        self.rect = pygame.Rect(self.pos[0], self.pos[1], self.cell_size, self.cell_size)
+        pygame.draw.rect(screen, self.color, (self.rect[0], self.rect[1], self.cell_size, self.cell_size))
+        
+
 def main():
     g = Game()
     ls = LandingPage(game=g)
@@ -450,6 +508,10 @@ def main():
     g.set_player(s)
     spawner = Spawner(to_spawn=AlienFleet, velocity=[-2.0,0.], n = 10, variance=0)
     g.add_object(spawner)
+
+    b = Barrier(g)
+    g.add_object(b)
+
 
     while True:
         g.play()
