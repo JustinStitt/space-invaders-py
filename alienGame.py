@@ -366,29 +366,15 @@ class Alien(Entity):
             self.explosion.game=self.game
             self.explosion.update()
         if self.cleanup:
-<<<<<<< HEAD
-            #del self.explosion # figure out explosion object cleanup...
-=======
->>>>>>> 402234d013eacbc7d63c70cd365f108b8a41955b
             self.is_exploding = False
             #del self.explosion
             if self in self.fleet:
                 self.fleet.remove(self)
-<<<<<<< HEAD
-        self.frame += 1
-        if self.frame % self.anim_timer == 0 and self.do_anim:
-            self.animate()
-=======
         if self.game.frame % self.anim_timer == 0 and self.do_anim:
             self.sprite = self.load_sprite('alien' if self.anim_state == 0 else 'alien2')
             self.anim_state += 1
             self.anim_state %= 2
->>>>>>> 402234d013eacbc7d63c70cd365f108b8a41955b
     
-    def animate(self):
-        self.anim_state = (self.anim_state + 1) % 2
-        self.sprite = self.load_sprite('alien' if self.anim_state == 0 else 'alien2')
-
     def render(self, screen):
         super().render(screen)
         if self.is_exploding:
