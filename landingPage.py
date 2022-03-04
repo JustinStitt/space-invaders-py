@@ -26,8 +26,11 @@ class LandingPage:
         self.color = (42, 42, 42)
         self.buttons = []
         self.setup_buttons()
-        self.alien_images = self.load_alien_images()
         self.do_show_highscores = False
+        self.sprites = self.load_alien_images()
+        self.anim_state = 0
+        self.frame = 0
+        self.anim_timer = 100
 
     def start_game(self):
         print('Starting Game!', flush=True)
@@ -64,6 +67,9 @@ class LandingPage:
             button.render()
         self.draw_alien_images()
         self.show_highscores()
+        self.frame += 1
+        if self.frame % self.anim_timer == 0:
+            self.anim_state += 1
 
     def buttons_clicked(self, mpos, lim=1):
         clicked = [] # list of buttons clicked (usually just one, det by lim)
@@ -91,25 +97,22 @@ class LandingPage:
         
     
     def draw_alien_images(self):
-        spacing = (self.game.height/len(self.alien_images)) // 4
+        spacing = (self.game.height/len(self.game.aliens)) // 3
         x = 0
-        for sprite in self.alien_images:
-            self.game.screen.blit(sprite, (250, 300+ x*spacing, 25, 25))
-            self.game.draw_text(f'      = {(x+1)*100} points', pos=(300, 300+x*spacing))
+        for chunk in self.sprites:
+            self.game.screen.blit(chunk[self.anim_state%len(chunk)], (250, 300+ x*spacing, 25, 25))
+            self.game.draw_text(f'      = {(x+1)*100} points' if x < len(self.sprites) -1 else '      = ???', pos=(300, 300+x*spacing))
             x += 1
 
-    def load_alien_images(self):
-        imgs = []
-        for filename in glob.glob('./assets/*.png'):
-            if re.search("alien", filename) is not None:
-                imgs.append(filename)
-        
+    def load_alien_images(self):        
         sprites = []
-        for img_path in imgs:
-            sp = pygame.image.load(f'{img_path}')
-            sp = pygame.transform.scale(sp, (self.game.width*.1, self.game.height*.1))
-
-            sprites.append(sp)
+        for chunk in self.game.aliens:
+            alien_anims = []
+            for img in chunk:
+                sp = pygame.image.load(f'./assets/{img}.png')
+                sp = pygame.transform.scale(sp, (self.game.width*.1, self.game.height*.1))
+                alien_anims.append(sp)
+            sprites.append(alien_anims)
         return sprites
 
     def update(self):

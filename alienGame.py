@@ -9,7 +9,7 @@ import pygame
 import sys
 import os
 import math
-from random import randrange
+from random import randrange, choice
 
 
 class Game:
@@ -38,6 +38,7 @@ class Game:
         self.laser_sound = pygame.mixer.Sound('assets/lasersound.mp3')
         self.explosion_sound = pygame.mixer.Sound('assets/explosionsound.wav')
         self.highscore_file = open('./assets/highscores.txt', 'a+')
+        self.aliens = [['alien', 'alien2', 'alien3', 'alien4', 'alien5'], ['GreenAlien', 'RedAlien'], ['zombie-alien', 'zombie2'], ['ufo', 'ufo1']]
 
     def set_player(self, player):
         self.player = player
@@ -348,7 +349,8 @@ class Alien(Entity):
         self.pos_time_of_death = [0 ,0]
         self.do_anim = True
         self.anim_state = 0
-        self.anim_timer = randrange(10, 100)
+        self.anim_timer = randrange(5, 25)
+        self.sprite_idx = 0
 
     def beat(self):
         self.is_exploding = True
@@ -371,9 +373,15 @@ class Alien(Entity):
             if self in self.fleet:
                 self.fleet.remove(self)
         if self.game.frame % self.anim_timer == 0 and self.do_anim:
-            self.sprite = self.load_sprite('alien' if self.anim_state == 0 else 'alien2')
+            if self.sprite_idx == 0:
+                self.sprite = self.load_sprite('alien' if self.anim_state%5 == 0 else f'alien{self.anim_state%5+1}')
+            elif self.sprite_idx == 1:
+                self.sprite = self.load_sprite('zombie-alien' if self.anim_state%2 == 0 else 'zombie2')
+            elif self.sprite_idx == 2:
+                self.sprite = self.load_sprite('RedAlien' if self.anim_state%2 == 0 else 'GreenAlien')
+            elif self.sprite_idx == 3:
+                self.sprite = self.load_sprite('ufo' if self.anim_state%2 == 0 else 'ufo1')
             self.anim_state += 1
-            self.anim_state %= 2
     
     def render(self, screen):
         super().render(screen)
@@ -389,6 +397,10 @@ class Alien(Entity):
         player = self.game.player
         if player is None: return
         collides = self.collides()
+        for collide in collides:
+            if isinstance(collide, BarrierPiece):
+                self.beat()
+                collide.beat()
         if player in collides:
             self.game.damage_player()
             self.can_damage = False
@@ -420,13 +432,15 @@ class AlienFleet(Entity):
             new_alien.scale = (new_alien.scale / (self.n+v)) * 7
             r = randrange(100)
             if r < self.laser_chance:
-                new_alien.sprite = "zombie-alien"
+                new_alien.sprite_idx = 1
                 new_alien.is_laser = True
                 new_alien.value = 300
-                new_alien.do_anim = False
             elif r < self.laser_chance*2:
-                new_alien.sprite = 'alien2'
+                new_alien.sprite_idx = 2
                 new_alien.value = 200
+            elif r < self.laser_chance*2.2:
+                new_alien.sprite_idx = 3
+                new_alien.value = choice([100, 200, 300, 400, 500])
             self.game.add_object(new_alien)
             p = new_alien.pos
             new_alien.rect.center = [new_alien.rect.width * x + new_alien.rect.width, p[1] + new_alien.rect.height + 5]
@@ -463,11 +477,11 @@ class Barrier(Entity):
     '''
     Barriers can be hit by lasers and their model deteriorates
     '''
-    def __init__(self, game=None, pos=[100, 550]):
+    def __init__(self, width=200, height = 100, cell_size = 8, game=None, pos=[100, 550]):
         super().__init__(pos=pos[:])
         self.pieces = []
         self.game = game
-        self.make_conglomerate(200, 100, 8)
+        self.make_conglomerate(width, height, cell_size)
 
     def render(self, screen):
         super().render(screen)
@@ -515,7 +529,9 @@ def main():
     spawner = Spawner(to_spawn=AlienFleet, velocity=[-2.0,0.], n = 10, variance=0)
     g.add_object(spawner)
 
-    b = Barrier(g)
+    b = Barrier(game=g, width = 100, height = 75, pos=[100, 570])
+    b = Barrier(game=g, width = 100, height = 75, pos=[350, 570])
+    b = Barrier(game=g, width = 100, height = 75, pos=[600, 570])
     g.add_object(b)
 
 
